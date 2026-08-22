@@ -1,0 +1,2 @@
+Denied login on 2026-08-22 19:52:35 by Guest with the following text: login 
+Login on 2026-08-22 19:52:43 by Admin with the following text: I did not say login admin 
