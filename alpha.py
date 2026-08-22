@@ -22,13 +22,9 @@ import pyaudio
 import sounddevice as sd
 from scipy.io.wavfile import write
 
-username = "Guest"
-
 sounds = {}
 sites = {"ecosia": "https://ecosia.org/", "google": "https://google.com/", "youtube": "https://youtube.com/"}
 increasenumbers = None
-
-greetings = [f"{username}.", f"Hello, {username}.", "At your service.", f"{username}?", f"Yes, {username}"]
 
 # Setup the Open-Meteo API client with cache and retry on error
 cache_session = requests_cache.CachedSession('.cache', expire_after = 3600)
@@ -61,7 +57,6 @@ timerRunning = False
 currentTime = 0
 startTime = 0
 maxTime = 0
-HasAccess = None
 latestSongName = None
 latestAppName = None
 latestImage = None
@@ -69,6 +64,19 @@ loopSong = False
 engine = pyttsx3.init()
 IsTalking = True;
 r = sr.Recognizer()
+
+class User:
+    def __init__(self, hasAccess=False, username="Guest",):
+        self.username = username
+        self.hasAccess = hasAccess
+    
+    def changeAccess(bool):
+        self.hasAccess = bool
+
+    def changeUsername(string):
+        self.username = string
+
+mainUser = User()
 
 def TTS(Text):
     engine.say(Text)
@@ -81,9 +89,30 @@ def FtC(Number):
 def has_numbers(inputString):
     return any(char.isdigit() for char in inputString)
 
-TTS(f"Good day, {username}")
+commandsList = []
 
-while IsTalking:
+class Commands:
+    def __init__(self, commandName, commandExecution, commandSpeech, requiresAccess):
+        self.commandName = commandName
+        self.commmandExecution = commandExecution
+        self.commandSpeech = commandSpeech
+        commandsList.append(self)
+
+    def executeCommand(input):
+        if string in self.commandExecution:
+            if (self.requiresAccess == True and User.hasAccess == True) or self.requiresAccess == False:
+                self.commandExecution()
+                TTS(self.commandSpeech)
+            else:
+                TTS("No access.")
+        else:
+            print("No command")
+
+shutdownCommand = Commands("Shutdown", exit(), "Shutting down.", False)
+
+TTS("Good day")
+
+while True: 
     user_input = ""
 
     with sr.Microphone() as source:
@@ -98,6 +127,18 @@ while IsTalking:
         print("Time over, thanks")
     except sr.UnknownValueError:
         print("Whoops. Some problems on my end")
+
+for eachCommand in commandsList:
+    eachCommand.executeCommand(user_input)
+    print(eachCommand.commandName)
+
+
+
+
+
+# TTS(f"Good day, {username}")
+
+while False:
 
 
     if "login" in user_input.lower() and username == "Guest":
