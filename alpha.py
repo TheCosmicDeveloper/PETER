@@ -21,6 +21,7 @@ from accounts import accountSearch
 import pyaudio
 import sounddevice as sd
 from scipy.io.wavfile import write
+from functools import partial
 
 sounds = {}
 sites = {"ecosia": "https://ecosia.org/", "google": "https://google.com/", "youtube": "https://youtube.com/"}
@@ -56,20 +57,19 @@ timerRunning = False
 currentTime = 0
 startTime = 0
 maxTime = 0
-latestSongName = None
 latestAppName = None
-loopSong = False
 engine = pyttsx3.init()
-IsTalking = True;
 r = sr.Recognizer()
 
 class User:
-    def __init__(self, hasAccess=False, username="Guest", screenshotLocation="/home/mint/Pictures/"):
+    def __init__(self, hasAccess=False, username="Guest", screenshotLocation="/home/mint/Pictures/", recordingLocation="/home/mint/Recordings"):
         self.username = username
         self.hasAccess = hasAccess
         self.latestScreenshot = None
         self.screenshotLocation = screenshotLocation
         self.timezone = input("What is your timezone?")
+        self.userInput = ""
+        self.recordingLocation = recordingLocation
     
     def changeAccess(self, bool):
         self.hasAccess = bool
@@ -87,6 +87,22 @@ def TTS(Text):
 def hasNumbers(inputString):
     return any(char.isdigit() for char in inputString)
 
+def recordAudio():
+    recordTime = re.findall(r'\d+', mainUser.userInput)
+    if hasNumbers(recordTime):
+            fs = 44100  
+            seconds = int(recordTime[0])
+            print(seconds)
+            print(seconds * fs)
+            recording = sd.rec(int(seconds * fs), samplerate=fs, channels=2)
+            TTS("Recording audio.")
+            sd.wait()  # Wait until recording is finished
+            userInput = ""
+            write(f'{mainUser.recordingLocation}/Recording {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}.wav', fs, recording)
+            return True
+    else:
+        return False
+
 def takeScreenshot():
     mainUser.latestScreenshot = ImageGrab.grab(bbox=None, include_layered_windows=False, all_screens=False, xdisplay="", window=None, scale_down=False)
     mainUser.latestScreenshot.save(f'{mainUser.screenshotLocation}/{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}.png')
@@ -94,8 +110,9 @@ def takeScreenshot():
 def showLatestScreenshot():
     if mainUser.latestScreenshot != None:
         mainUser.latestScreenshot.show()
+        return True
     else:
-        print("No screenshot")
+        return False
 
 def getCurrentTime():
     return datetime.datetime.now(ZoneInfo(mainUser.timezone))
@@ -105,24 +122,31 @@ def FtC(Number):
 class Commands:
     commandsList = []
 
-    def __init__(self, commandName, commandExecution, commandFunction, commandSpeech, requiresAccess):
+    def __init__(self, commandName, commandExecution, commandFunction, commandTrueSpeech, commandFalseSpeech, requiresAccess):
         self.commandName = commandName
         self.commandExecution = commandExecution
         self.commandFunction = commandFunction
-        self.commandSpeech = commandSpeech
+        self.commandTrueSpeech = commandTrueSpeech
+        self.commandFalseSpeech = commandFalseSpeech
         self.requiresAccess = requiresAccess
         self.commandsList.append(self)
 
     def executeCommand(self, string):
         if self.commandExecution.lower() in string.lower():
             if (self.requiresAccess == True and mainUser.hasAccess == True) or self.requiresAccess == False:
-                TTS(self.commandSpeech)
-                self.commandFunction()
+                
+                if self.commandFalseSpeech == "":
+                    TTS(self.commandTrueSpeech)
+                    self.commandFunction()
+                else:
+                    commandFunc = self.commandFunction()
+                    if commandFunc == True:
+                        TTS(self.commandTrueSpeech)
+                    elif commandFunc == False:
+                        TTS(self.commandFalseSpeech)
                 return True
             else:
                 TTS("No access.")
-        else:
-            print("No command")
 
 class AudioManager(Commands):
     audioDict = {"Loser": "LOSER.mp3", "Thunder": "THUNDER.mp3"}
@@ -131,33 +155,60 @@ class AudioManager(Commands):
     def __init__(self, commandSpeech):
         self.player = None
         self.latestAudioName = None
-        self.loopAudio = None
+        self.audioLooping = None
         Commands.commandsList.append(self)
-        self.commandsDict = {"play": self.playAudioCommand, "loop": self.loopSong}
+        self.commandsDict = {"play": self.playAudioCommand, "stop": self.stopAudio, "repeat": self.repeatAudio, "pause": self.pauseAudio, "resume": self.resumeAudio}
     
-    def playAudioCommand(self, string, needsString=True):
-        if "play" in string.lower() or needsString == False:
-            for key, value in self.audioDict.items():
-                if key.lower() in string.lower():
-                    print("runnnnnnnning")
-                    if self.player != None:
-                        self.player.stop()
-                        self.player = None
-                    self.latestAudioName = key
-                    self.player = vlc.MediaPlayer(f"Audio/{value}")
-                    self.player.play()
-                    return f"Playing {self.latestAudioName}"
+    def playAudioCommand(self, string):
+        for key, value in self.audioDict.items():
+            if key.lower() in string.lower():
+                if self.player != None:
+                    self.player.stop()
+                    self.player = None
+                self.latestAudioName = key
+                self.player = vlc.MediaPlayer(f"Audio/{value}")
+                self.player.play()
+                return f"Playing {self.latestAudioName}"
         
-    def loopSong(self, string):        
-        if "loop" in string.lower():
-            if self.latestAudioName != None:
-                self.loopAudio = True
-                return f"Looping {self.latestAudioName}"
+    def repeatAudio(self, string):        
+        if self.latestAudioName != None:
+            self.audioLooping = True
+            return f"Repeating {self.latestAudioName}"
+        else:
+            return f"No audio to repeat."
+    
+    def stopAudio(self, string):
+        if "repeat" in string.lower():
+            if self.audioLooping == True:
+                self.audioLooping = False
+                return "Stopping repeat."
             else:
-                return f"No song to loop."
+                return "Audio repeating is not enabled."
+        else:
+            if self.latestAudioName != None:
+                self.latestAudioName = None
+                self.player.stop()
+                self.player = None
+                return f"Stopping audio."
+            else:
+                return "No audio to stop."
 
+    def pauseAudio(self, string):
+        if self.latestAudioName != None:
+            self.player.pause()
+            return f"Pausing{self.latestAudioName}"
+        else:
+            return f"No audio to pause."
 
-
+    def resumeAudio(self, string):
+        if self.latestAudioName != None:
+            if self.player.get_state() == vlc.State.Paused:
+                self.player.play()
+                return f"Resuming {self.latestAudioName}"
+            else:
+                return f"{self.latestAudioName} is {self.player.get_state()}"
+        else:
+            return f"No audio is playing."
 
     def executeCommand(self, string):
         for key, value in self.commandsDict.items():
@@ -170,17 +221,16 @@ class AudioManager(Commands):
 
 
 
-shutdownCommand = Commands("Shutdown", "shut down", exit, "Shutting down.", False)
-takeScreenshotCommand = Commands("Take a Screenshot", "Take", takeScreenshot, "Taking a screenshot", False)
-showLatestScreenshotCommand = Commands("Show latest screenshot", "Show", showLatestScreenshot, "Showing the latest screenshot", False)
-timeCommand = Commands("Current time", "Time", getCurrentTime, f"The current time is {getCurrentTime().strftime("%I:%M %p")}", False)
+shutdownCommand = Commands("Shutdown", "shut down", exit, "Shutting down.", "", False)
+takeScreenshotCommand = Commands("Take a Screenshot", "Take", takeScreenshot, "Taking a screenshot", "", False)
+showLatestScreenshotCommand = Commands("Show latest screenshot", "Show", showLatestScreenshot, "Showing the latest screenshot", "There is no latest screenshot", False)
+timeCommand = Commands("Current time", "Time", getCurrentTime, f"The current time is {getCurrentTime().strftime("%I:%M %p")}", "", False)
 audioCommands = AudioManager("Playing audio")
+recordingCommand = Commands("Record audio", "Record", recordAudio, "Recording has been finished.", "Please determine the length of the recording next time.", False)
 
 TTS("Good day")
 
-while True: 
-    user_input = ""
-
+while True:
     with sr.Microphone() as source:
         print("Talk")
         audio_text = r.listen(source)
@@ -188,39 +238,28 @@ while True:
         # error if the API is unreachable,
         # hence using exception handling
 
-    #     if loopSong == True:
-#         current_state = p.get_state()
-#         print(f"LOOP LOOP 000: {current_state}")
-#         if current_state == vlc.State.Ended:
-#             p = vlc.MediaPlayer(f"Sounds/{sounds.get(latestSongName)}")
-#             p.play()
-
     try:
-        user_input = r.recognize_google(audio_text, language="en-US")
+        mainUser.userInput = r.recognize_google(audio_text, language="en-US")
         print("Time over, thanks")
     except sr.UnknownValueError:
         print("Whoops. Some problems on my end")
 
 
     if audioCommands.player != None:
-        print('audio plauer is not none')
         if audioCommands.player.get_state() == vlc.State.Ended:
-            print('audio ended')
-            if audioCommands.loopAudio == True:
-                playAudioFunction = audioCommands.playAudioCommand(audioCommands.latestAudioName, False)
+            if audioCommands.audioLooping == True:
+                playAudioFunction = audioCommands.playAudioCommand(audioCommands.latestAudioName)
                 print(playAudioFunction)
                 print(audioCommands.latestAudioName)
                 TTS(playAudioFunction)
-                print('loop is true')
             else:
                 audioCommands.player = None
                 audioCommands.latestAudioName = None
-                print('loop is false')
 
-    if user_input != "":
+    if mainUser.userInput != "":
         for eachCommand in Commands.commandsList:
-            commandExecution = eachCommand.executeCommand(user_input)
-            print("executing commands")
+            commandExecution = eachCommand.executeCommand(mainUser.userInput)
+            userInput = ""
             if commandExecution == True:
                 break
 
@@ -233,32 +272,24 @@ while True:
 # while False:
 
 
-#     if "login" in user_input.lower() and username == "Guest":
-#         found, user = accountSearch(user_input)
+#     if "login" in userInput.lower() and username == "Guest":
+#         found, user = accountSearch(userInput)
 #         if found:
 #             username = user
 #             TTS(f"Welcome back, {username}.")
 #             HasAccess = True
 #             with open("Logs/logins.txt", "a") as f:
-#                 f.write(f"Login on {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} by {user} with the following text: {user_input} \n")
+#                 f.write(f"Login on {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} by {user} with the following text: {userInput} \n")
 #         else:
 #             TTS(f"Denied.")
 #             with open("Logs/logins.txt", "a") as f:
-#                 f.write(f"Denied login on {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} by {username} with the following text: {user_input} \n")
-
-#     if "shutdown" in user_input.lower() or "disable" in user_input.lower() or "cut" in user_input.lower():
-#         TTS(f"Shutting down, {username}")
-#         exit()
-    
-#     # Use a list of possible greetings from me for this
-#     if "hello" in user_input.lower() or "peter" in user_input.lower():
-#         TTS(greetings[random.randint(0, 4)])
+#                 f.write(f"Denied login on {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} by {username} with the following text: {userInput} \n")
 
 #     # REMINDER: Clean this up. Possibly find a way to loop through all possible numbers between 1-100. 
 #     # UPDATE: Should be done
-#     if "volume" in user_input.lower():
-#         print(re.findall(r'\d+', user_input))
-#         increasenumbers = re.findall(r'\d+', user_input)
+#     if "volume" in userInput.lower():
+#         print(re.findall(r'\d+', userInput))
+#         increasenumbers = re.findall(r'\d+', userInput)
 #         if has_numbers(increasenumbers):
 #             call(f'pactl -- set-sink-volume 0 {increasenumbers[0]}% ', shell=True)
 #             TTS(f"Volume has been set to {increasenumbers[0]}")
@@ -266,34 +297,24 @@ while True:
 #         else:
 #             TTS(f"Said message has no numbers.")
     
-#     if "record" in user_input.lower():
-#         recordTime = re.findall(r'\d+', user_input)
-#         if has_numbers(recordTime):
-#             TTS(f"Recording for {recordTime}")
-#             fs = 44100  
-#             seconds = int(recordTime[0])
-#             print(seconds)
-#             print(seconds * fs)
-#             myrecording = sd.rec(int(seconds * fs), samplerate=fs, channels=2)
-#             sd.wait()  # Wait until recording is finished
-#             write(f'Recording {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}.wav', fs, myrecording)  # Save as WAV file 
+
 
 #         else:
 #             TTS(f"Said message has no numbers.")
 
-#     if "open" in user_input.lower():
+#     if "open" in userInput.lower():
 #             for key, value in sites.items():
-#                 if key in user_input.lower():
+#                 if key in userInput.lower():
 #                     TTS(f"Opening {key}.")
 #                     webbrowser.open(value)
 
 #             # for i in range(len(appnames)):
-#             #     if appnames[i] in user_input.lower():
+#             #     if appnames[i] in userInput.lower():
 #             #         latestAppName = appnames[i]
 #             #         TTS(f"Opening {appnames[i]}.")
 #             #         webbrowser.open(appcommands[i])
     
-#     if "avengers protocol" in user_input.lower():
+#     if "avengers protocol" in userInput.lower():
 #         if HasAccess == True:
 #             if p != None:
 #                 p.stop()
@@ -304,7 +325,7 @@ while True:
 #         else:
 #             TTS(f"Access denied, {username}")
     
-#     if "clean up protocol" in user_input.lower():
+#     if "clean up protocol" in userInput.lower():
 #         if HasAccess == True:
 #             TTS(f"Initiating the clean-up protocol, {username}.")
 #             call("killall brave", shell=True)
@@ -315,7 +336,7 @@ while True:
 #         else:
 #             TTS(f"Access denied, {username}")
 
-#     if "beta protocol" in user_input.lower():
+#     if "beta protocol" in userInput.lower():
 #         if HasAccess == True:
 #             TTS("Shutting down all systems")
 #             call('systemctl poweroff -i', shell=True)
@@ -329,45 +350,12 @@ while True:
     
 
     
-#     if "stop" in user_input.lower():
-#         if "loop" in user_input.lower():
-#             if loopSong == True:
-#                 loopSong = False
-#                 TTS("Stopping loop.")
-#             else:
-#                 TTS("Looping is not on.")
-#         else:
-#             if latestSongName != None:
-#                 TTS(f"Stopping {latestSongName}")
-#                 latestSongName = None
-#                 p.stop()
-#             else:
-#                 TTS(f"No song is playing, {username}")
 
-#     if "pause" in user_input.lower():
-#         if latestSongName!= None:
-#             if p.get_state() == vlc.State.Playing:
-#                 p.pause()
-#                 TTS(f"Pausing {latestSongName}.")
-#         else:
-#             TTS(f"No song to pause, {username}.")
 
-#     if "unpause" in user_input.lower() or "resume" in user_input.lower():
-#         if latestSongName != None:
-#             if p.get_state() == vlc.State.Paused:
-#                 p.play()
-#                 TTS(f"Resuming {latestSongName}")
-#             else:
-#                 TTS(f"{latestSongName} is {p.get_state()}")
-#         else:
-#             TTS(f"No song is playing, {username}.")
+
     
-#     if latestSongName != None:
-#         if p.get_state() == vlc.State.Ended:
-#             p = None
-#             latestSongName = None
 
-#     # if "timer" in user_input.lower():
+#     # if "timer" in userInput.lower():
 #     #     if timerRunning == False:
 #     #         timerRunning = True
 #     #         startTime = 0
@@ -381,11 +369,11 @@ while True:
 #     #     print("yay mario")
 #     # NOTE: WORK IN PROGRESS. SEE: TESTSCRIPT.PY
             
-#     if "thank" in user_input.lower():
+#     if "thank" in userInput.lower():
 #         TTS(f"At your service, {username}.")
     
-#     if "temperature" in user_input.lower():
-#         if "fahrenheit" in user_input.lower():
+#     if "temperature" in userInput.lower():
+#         if "fahrenheit" in userInput.lower():
 #             TTS(f"The current temperature in fahrenheit is {str(FtC(round(current_temperature_2m)))} degrees.")
 #         else:
 #             TTS(f"The current temperature is {round(current_temperature_2m)} degrees in celsius.")
