@@ -52,7 +52,6 @@ current = response.Current()
 current_temperature_2m = current.Variables(0).Value()
 current_is_day = current.Variables(1).Value()
 
-p = None
 timerRunning = False
 currentTime = 0
 startTime = 0
@@ -70,6 +69,7 @@ class User:
         self.hasAccess = hasAccess
         self.latestScreenshot = None
         self.screenshotLocation = screenshotLocation
+        self.timezone = input("What is your timezone?")
     
     def changeAccess(self, bool):
         self.hasAccess = bool
@@ -84,16 +84,24 @@ def TTS(Text):
     engine.setProperty('rate', 125) 
     engine.runAndWait() 
 
-def takeScreenshot():
-    latestScreenshot = ImageGrab.grab(bbox=None, include_layered_windows=False, all_screens=False, xdisplay="", window=None, scale_down=False)
-    latestScreenshot.save(f'{mainUser.screenshotLocation}/{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}.png')
-
-def FtC(Number):
-    return Number * 9 / 5 + 32
-
 def hasNumbers(inputString):
     return any(char.isdigit() for char in inputString)
 
+def takeScreenshot():
+    mainUser.latestScreenshot = ImageGrab.grab(bbox=None, include_layered_windows=False, all_screens=False, xdisplay="", window=None, scale_down=False)
+    mainUser.latestScreenshot.save(f'{mainUser.screenshotLocation}/{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}.png')
+
+def showLatestScreenshot():
+    if mainUser.latestScreenshot != None:
+        mainUser.latestScreenshot.show()
+    else:
+        print("No screenshot")
+
+def getCurrentTime():
+    return datetime.datetime.now(ZoneInfo(mainUser.timezone))
+
+def FtC(Number):
+    return Number * 9 / 5 + 32
 class Commands:
     commandsList = []
 
@@ -110,18 +118,67 @@ class Commands:
             if (self.requiresAccess == True and mainUser.hasAccess == True) or self.requiresAccess == False:
                 TTS(self.commandSpeech)
                 self.commandFunction()
+                return True
             else:
                 TTS("No access.")
         else:
             print("No command")
 
-shutdownCommand = Commands("Shutdown", "shut down", exit, "Shutting down.", False)
-takeScreenshotCommand = Commands("Take a Screenshot", "Take Screenshot", takeScreenshot, "Taking a screenshot", False)
+class AudioManager(Commands):
+    audioDict = {"Loser": "LOSER.mp3", "Thunder": "THUNDER.mp3"}
+    commandsDict = None
 
+    def __init__(self, commandSpeech):
+        self.player = None
+        self.latestAudioName = None
+        self.loopAudio = None
+        Commands.commandsList.append(self)
+        self.commandsDict = {"play": self.playAudioCommand, "loop": self.loopSong}
+    
+    def playAudioCommand(self, string, needsString=True):
+        if "play" in string.lower() or needsString == False:
+            for key, value in self.audioDict.items():
+                if key.lower() in string.lower():
+                    print("runnnnnnnning")
+                    if self.player != None:
+                        self.player.stop()
+                        self.player = None
+                    self.latestAudioName = key
+                    self.player = vlc.MediaPlayer(f"Audio/{value}")
+                    self.player.play()
+                    return f"Playing {self.latestAudioName}"
+        
+    def loopSong(self, string):        
+        if "loop" in string.lower():
+            if self.latestAudioName != None:
+                self.loopAudio = True
+                return f"Looping {self.latestAudioName}"
+            else:
+                return f"No song to loop."
+
+
+
+
+    def executeCommand(self, string):
+        for key, value in self.commandsDict.items():
+            if key in string.lower():
+                    commandExecution = value(string)
+                    TTS(commandExecution)
+                    return True
+            else:
+                print("No command")
+
+
+
+shutdownCommand = Commands("Shutdown", "shut down", exit, "Shutting down.", False)
+takeScreenshotCommand = Commands("Take a Screenshot", "Take", takeScreenshot, "Taking a screenshot", False)
+showLatestScreenshotCommand = Commands("Show latest screenshot", "Show", showLatestScreenshot, "Showing the latest screenshot", False)
+timeCommand = Commands("Current time", "Time", getCurrentTime, f"The current time is {getCurrentTime().strftime("%I:%M %p")}", False)
+audioCommands = AudioManager("Playing audio")
 
 TTS("Good day")
 
-while True == True: 
+while True: 
     user_input = ""
 
     with sr.Microphone() as source:
@@ -130,16 +187,42 @@ while True == True:
         # recoginze_() method will throw a request
         # error if the API is unreachable,
         # hence using exception handling
-    
+
+    #     if loopSong == True:
+#         current_state = p.get_state()
+#         print(f"LOOP LOOP 000: {current_state}")
+#         if current_state == vlc.State.Ended:
+#             p = vlc.MediaPlayer(f"Sounds/{sounds.get(latestSongName)}")
+#             p.play()
+
     try:
         user_input = r.recognize_google(audio_text, language="en-US")
         print("Time over, thanks")
     except sr.UnknownValueError:
         print("Whoops. Some problems on my end")
 
+
+    if audioCommands.player != None:
+        print('audio plauer is not none')
+        if audioCommands.player.get_state() == vlc.State.Ended:
+            print('audio ended')
+            if audioCommands.loopAudio == True:
+                playAudioFunction = audioCommands.playAudioCommand(audioCommands.latestAudioName, False)
+                print(playAudioFunction)
+                print(audioCommands.latestAudioName)
+                TTS(playAudioFunction)
+                print('loop is true')
+            else:
+                audioCommands.player = None
+                audioCommands.latestAudioName = None
+                print('loop is false')
+
     if user_input != "":
         for eachCommand in Commands.commandsList:
-            eachCommand.executeCommand(user_input)
+            commandExecution = eachCommand.executeCommand(user_input)
+            print("executing commands")
+            if commandExecution == True:
+                break
 
 
 
@@ -170,11 +253,6 @@ while True == True:
 #     # Use a list of possible greetings from me for this
 #     if "hello" in user_input.lower() or "peter" in user_input.lower():
 #         TTS(greetings[random.randint(0, 4)])
-    
-#     if "time" in user_input.lower():
-#         time = datetime.datetime.now(ZoneInfo("Asia/Baghdad"))
-#         print(f"The current time is {time.strftime("%I:%M %p")}")
-#         TTS(f"The current time is {time.strftime("%I:%M %p")}")
 
 #     # REMINDER: Clean this up. Possibly find a way to loop through all possible numbers between 1-100. 
 #     # UPDATE: Should be done
@@ -247,33 +325,9 @@ while True == True:
     
 
     
-#     if "loop sound" in user_input.lower():
-#         if latestSongName != None:
-#             TTS(f"Looping {latestSongName}")
-#             loopSong = True
-#         else:
-#             TTS("No song to loop.")
 
-#     if loopSong == True:
-#         current_state = p.get_state()
-#         print(f"LOOP LOOP 000: {current_state}")
-#         if current_state == vlc.State.Ended:
-#             p = vlc.MediaPlayer(f"Sounds/{sounds.get(latestSongName)}")
-#             p.play()
     
-#     if "play" in user_input.lower():
-#             for key, value in sounds.items():
-#                 if key in user_input.lower():
-#                     if p != None:
-#                         p.stop()
-#                         p = None
-#                     latestSongName = key
-#                     TTS(f"Playing {key}.")
-#                     p = vlc.MediaPlayer(f"Sounds/{value}")
-#                     p.play() 
-#             #     elif songnames[i] == songnames[-1]:
-#             #         TTS(f"No such song found, {username}.")
-#                 # NOTE: REIMPLEMENT ABOVE ^
+
     
 #     if "stop" in user_input.lower():
 #         if "loop" in user_input.lower():
@@ -326,19 +380,6 @@ while True == True:
 #     # if startTime - currentTime >= maxTime:   
 #     #     print("yay mario")
 #     # NOTE: WORK IN PROGRESS. SEE: TESTSCRIPT.PY
-
-    
-#     if "screenshot" in user_input.lower():
-#         if "take" in user_input.lower():
-#             latestImage = ImageGrab.grab(bbox=None, include_layered_windows=False, all_screens=False, xdisplay="", window=None, scale_down=False)
-#             latestImage.save(f'/home/mint/Pictures/{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}.png')
-#             TTS(f"A screenshot has been taken, {username}.")
-#         elif "show" in user_input.lower():
-#             if latestImage != None:
-#                 latestImage.show()
-#                 TTS(f"Showing latest screenshot, {username}.")
-#             else:
-#                 TTS(f"No latest screenshot, {username}.")
             
 #     if "thank" in user_input.lower():
 #         TTS(f"At your service, {username}.")
