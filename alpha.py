@@ -59,16 +59,17 @@ startTime = 0
 maxTime = 0
 latestSongName = None
 latestAppName = None
-latestImage = None
 loopSong = False
 engine = pyttsx3.init()
 IsTalking = True;
 r = sr.Recognizer()
 
 class User:
-    def __init__(self, hasAccess=False, username="Guest",):
+    def __init__(self, hasAccess=False, username="Guest", screenshotLocation="/home/mint/Pictures/"):
         self.username = username
         self.hasAccess = hasAccess
+        self.latestScreenshot = None
+        self.screenshotLocation = screenshotLocation
     
     def changeAccess(self, bool):
         self.hasAccess = bool
@@ -83,34 +84,40 @@ def TTS(Text):
     engine.setProperty('rate', 125) 
     engine.runAndWait() 
 
+def takeScreenshot():
+    latestScreenshot = ImageGrab.grab(bbox=None, include_layered_windows=False, all_screens=False, xdisplay="", window=None, scale_down=False)
+    latestScreenshot.save(f'{mainUser.screenshotLocation}/{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}.png')
+
 def FtC(Number):
     return Number * 9 / 5 + 32
 
-def has_numbers(inputString):
+def hasNumbers(inputString):
     return any(char.isdigit() for char in inputString)
 
-commandsList = []
-
 class Commands:
+    commandsList = []
+
     def __init__(self, commandName, commandExecution, commandFunction, commandSpeech, requiresAccess):
         self.commandName = commandName
         self.commandExecution = commandExecution
         self.commandFunction = commandFunction
         self.commandSpeech = commandSpeech
         self.requiresAccess = requiresAccess
-        commandsList.append(self)
+        self.commandsList.append(self)
 
     def executeCommand(self, string):
         if self.commandExecution.lower() in string.lower():
             if (self.requiresAccess == True and mainUser.hasAccess == True) or self.requiresAccess == False:
-                self.commandFunction()
                 TTS(self.commandSpeech)
+                self.commandFunction()
             else:
                 TTS("No access.")
         else:
             print("No command")
 
 shutdownCommand = Commands("Shutdown", "shut down", exit, "Shutting down.", False)
+takeScreenshotCommand = Commands("Take a Screenshot", "Take Screenshot", takeScreenshot, "Taking a screenshot", False)
+
 
 TTS("Good day")
 
@@ -130,9 +137,9 @@ while True == True:
     except sr.UnknownValueError:
         print("Whoops. Some problems on my end")
 
-    for eachCommand in commandsList:
-        eachCommand.executeCommand(user_input)
-        print(eachCommand.commandName)
+    if user_input != "":
+        for eachCommand in Commands.commandsList:
+            eachCommand.executeCommand(user_input)
 
 
 
