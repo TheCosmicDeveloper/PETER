@@ -1,7 +1,5 @@
 # P.E.T.E.R v0 ALPHA
-#  Program for Electrical Technological Executive Robotics  
 
-import openmeteo_requests
 import pandas as pd
 import requests_cache
 from retry_requests import retry
@@ -23,35 +21,7 @@ import sounddevice as sd
 from scipy.io.wavfile import write
 from functools import partial
 
-sounds = {}
 sites = {"ecosia": "https://ecosia.org/", "google": "https://google.com/", "youtube": "https://youtube.com/"}
-increasenumbers = None
-
-# Setup the Open-Meteo API client with cache and retry on error
-cache_session = requests_cache.CachedSession('.cache', expire_after = 3600)
-retry_session = retry(cache_session, retries = 5, backoff_factor = 0.2)
-openmeteo = openmeteo_requests.Client(session = retry_session)
-
-# Make sure all required weather variables are listed here
-# The order of variables in hourly or daily is important to assign them correctly below
-url = "https://api.open-meteo.com/v1/forecast"
-params = {
-	"latitude": 36.1912,
-	"longitude": 44.0094,
-	"current": ["temperature_2m", "is_day"],
-}
-responses = openmeteo.weather_api(url, params = params)
-
-# Process first location. Add a for-loop for multiple locations or weather models
-response = responses[0]
-print(f"Coordinates: {response.Latitude()}°N {response.Longitude()}°E")
-print(f"Elevation: {response.Elevation()} m asl")
-print(f"Timezone difference to GMT+0: {response.UtcOffsetSeconds()}s")
-
-# Process current data. The order of variables needs to be the same as requested.
-current = response.Current()
-current_temperature_2m = current.Variables(0).Value()
-current_is_day = current.Variables(1).Value()
 
 timerRunning = False
 currentTime = 0
@@ -62,7 +32,7 @@ engine = pyttsx3.init()
 r = sr.Recognizer()
 
 class User:
-    def __init__(self, hasAccess=False, username="Guest", screenshotLocation="/home/mint/Pictures/", recordingLocation="/home/mint/Recordings"):
+    def __init__(self, hasAccess=False, username="Guest", screenshotLocation="/home/mint/Pictures/", recordingLocation="/home/mint/Recordings", audioLocation="home/mint/Music"):
         self.username = username
         self.hasAccess = hasAccess
         self.latestScreenshot = None
@@ -70,6 +40,7 @@ class User:
         self.timezone = input("What is your timezone?")
         self.userInput = ""
         self.recordingLocation = recordingLocation
+        self.audioLocation = audioLocation
     
     def changeAccess(self, bool):
         self.hasAccess = bool
@@ -92,10 +63,8 @@ def recordAudio():
     if hasNumbers(recordTime):
             fs = 44100  
             seconds = int(recordTime[0])
-            print(seconds)
-            print(seconds * fs)
             recording = sd.rec(int(seconds * fs), samplerate=fs, channels=2)
-            TTS("Recording audio.")
+            TTS(f"Recording audio for {recordTime[0]}")
             sd.wait()  # Wait until recording is finished
             userInput = ""
             write(f'{mainUser.recordingLocation}/Recording {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}.wav', fs, recording)
@@ -119,6 +88,21 @@ def getCurrentTime():
 
 def FtC(Number):
     return Number * 9 / 5 + 32
+
+def shutdownComputer():
+    call('systemctl poweroff -i', shell=True)
+
+def changeVolume():
+    print("change volume")
+    if hasNumbers(mainUser.userInput):
+        print("has numbers")
+        changeNumber = re.findall(r'\d+', mainUser.userInput)
+        call(f'pactl -- set-sink-volume 0 {changeNumber[0]}% ', shell=True)
+        return True
+    else:
+        print("has no numbers")
+        return False
+
 class Commands:
     commandsList = []
 
@@ -134,10 +118,11 @@ class Commands:
     def executeCommand(self, string):
         if self.commandExecution.lower() in string.lower():
             if (self.requiresAccess == True and mainUser.hasAccess == True) or self.requiresAccess == False:
-                
                 if self.commandFalseSpeech == "":
                     TTS(self.commandTrueSpeech)
                     self.commandFunction()
+                    if mainUser.hasAccess == True:
+                        mainUser.hasAccess = False
                 else:
                     commandFunc = self.commandFunction()
                     if commandFunc == True:
@@ -146,10 +131,11 @@ class Commands:
                         TTS(self.commandFalseSpeech)
                 return True
             else:
-                TTS("No access.")
+                TTS("Are you sure you want to execute this command? If you are, run it again.")
+                mainUser.hasAccess = True
 
-class AudioManager(Commands):
-    audioDict = {"Loser": "LOSER.mp3", "Thunder": "THUNDER.mp3"}
+class audioManager(Commands):
+    audioDict = {}
     commandsDict = None
 
     def __init__(self, commandSpeech):
@@ -166,7 +152,7 @@ class AudioManager(Commands):
                     self.player.stop()
                     self.player = None
                 self.latestAudioName = key
-                self.player = vlc.MediaPlayer(f"Audio/{value}")
+                self.player = vlc.MediaPlayer(f"{mainUser.audioLocation}/{value}")
                 self.player.play()
                 return f"Playing {self.latestAudioName}"
         
@@ -216,17 +202,17 @@ class AudioManager(Commands):
                     commandExecution = value(string)
                     TTS(commandExecution)
                     return True
-            else:
-                print("No command")
 
 
 
-shutdownCommand = Commands("Shutdown", "shut down", exit, "Shutting down.", "", False)
+exitCommand = Commands("Exit", "Exit", exit, "Exitting.", "", False)
 takeScreenshotCommand = Commands("Take a Screenshot", "Take", takeScreenshot, "Taking a screenshot", "", False)
 showLatestScreenshotCommand = Commands("Show latest screenshot", "Show", showLatestScreenshot, "Showing the latest screenshot", "There is no latest screenshot", False)
 timeCommand = Commands("Current time", "Time", getCurrentTime, f"The current time is {getCurrentTime().strftime("%I:%M %p")}", "", False)
-audioCommands = AudioManager("Playing audio")
+audioCommands = audioManager("Playing audio")
 recordingCommand = Commands("Record audio", "Record", recordAudio, "Recording has been finished.", "Please determine the length of the recording next time.", False)
+shutdownCommand = Commands("Shutdown Computer", "shut down", shutdownComputer, "Shutting down computer.", "", True)
+volumeCommand = Commands("Change Volume", "volume", changeVolume, "Volume has been changed.", "Please give a number to change the volume to next time.", False)
 
 TTS("Good day")
 
@@ -259,8 +245,9 @@ while True:
     if mainUser.userInput != "":
         for eachCommand in Commands.commandsList:
             commandExecution = eachCommand.executeCommand(mainUser.userInput)
-            userInput = ""
+            print(mainUser.userInput)
             if commandExecution == True:
+                mainUser.userInput = ""
                 break
 
 
@@ -272,35 +259,10 @@ while True:
 # while False:
 
 
-#     if "login" in userInput.lower() and username == "Guest":
-#         found, user = accountSearch(userInput)
-#         if found:
-#             username = user
-#             TTS(f"Welcome back, {username}.")
-#             HasAccess = True
-#             with open("Logs/logins.txt", "a") as f:
-#                 f.write(f"Login on {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} by {user} with the following text: {userInput} \n")
-#         else:
-#             TTS(f"Denied.")
-#             with open("Logs/logins.txt", "a") as f:
-#                 f.write(f"Denied login on {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} by {username} with the following text: {userInput} \n")
-
-#     # REMINDER: Clean this up. Possibly find a way to loop through all possible numbers between 1-100. 
-#     # UPDATE: Should be done
-#     if "volume" in userInput.lower():
-#         print(re.findall(r'\d+', userInput))
-#         increasenumbers = re.findall(r'\d+', userInput)
-#         if has_numbers(increasenumbers):
-#             call(f'pactl -- set-sink-volume 0 {increasenumbers[0]}% ', shell=True)
-#             TTS(f"Volume has been set to {increasenumbers[0]}")
-#             increasenumbers = None
-#         else:
-#             TTS(f"Said message has no numbers.")
-    
+#
 
 
-#         else:
-#             TTS(f"Said message has no numbers.")
+
 
 #     if "open" in userInput.lower():
 #             for key, value in sites.items():
@@ -335,14 +297,6 @@ while True:
 #             webbrowser.open(sites["aether"])
 #         else:
 #             TTS(f"Access denied, {username}")
-
-#     if "beta protocol" in userInput.lower():
-#         if HasAccess == True:
-#             TTS("Shutting down all systems")
-#             call('systemctl poweroff -i', shell=True)
-
-#         else:
-#             TTS(f"Access denied, {username}")
     
 
     
@@ -372,8 +326,3 @@ while True:
 #     if "thank" in userInput.lower():
 #         TTS(f"At your service, {username}.")
     
-#     if "temperature" in userInput.lower():
-#         if "fahrenheit" in userInput.lower():
-#             TTS(f"The current temperature in fahrenheit is {str(FtC(round(current_temperature_2m)))} degrees.")
-#         else:
-#             TTS(f"The current temperature is {round(current_temperature_2m)} degrees in celsius.")
