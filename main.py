@@ -1,5 +1,7 @@
 # P.E.T.E.R v0 ALPHA
 
+print("RUNNING PETER")
+
 import pandas as pd
 import requests_cache
 from retry_requests import retry
@@ -20,15 +22,7 @@ import pyaudio
 import sounddevice as sd
 from scipy.io.wavfile import write
 from functools import partial
-import timeManager 
 
-sites = {"ecosia": "https://ecosia.org/", "google": "https://google.com/", "youtube": "https://youtube.com/"}
-
-timerRunning = False
-currentTime = 0
-startTime = 0
-maxTime = 0
-latestAppName = None
 engine = pyttsx3.init()
 r = sr.Recognizer()
 
@@ -202,23 +196,71 @@ class audioManager(Commands):
 
     def executeCommand(self, string):
         for key, value in self.commandsDict.items():
-            if key in string.lower():
+            splitString = string.split()
+            for i in splitString:
+                if key.lower() == i.lower():
                     commandExecution = value(string)
                     TTS(commandExecution)
                     return True
+class stopwatch():
+    def __init__(self):
+        self.startTime = 0
+        self.currentTime = 0
+        self.endTime = 0
+        self.isRunning = False
+        self.isPaused = False
+    
+    def startStopwatch(self):
+        self.startTime = time.time()
+        self.isRunning = True
+    
+    def endStopwatch(self):
+        if self.isRunning == True:
+            self.isRunning = False
+            self.endTime = self.currentTime
+            self.currentTime = 0
+            return True
+        else:
+            return False
+    
+    def pauseStopwatch(self):
+        if self.isPaused == False:    
+            self.isRunning = False
+            self.isPaused = True
+            return True
+        else:
+            return False
+    
+    def resumeStopwatch(self):
+        if self.isPaused == True:
+            self.isRunning = True
+            self.isPaused = False
+            return True
+        else:
+            return False
+    
+    def getCurrentTime(self):
+        TTS(f"current stopwatch time is {round(self.currentTime)}")
+        # PSST: Reminder to turn this into something like: 30.28 seconds.
+    def manageStopwatch(self):
+        self.currentTime = time.time() - self.startTime
 
+stopwatchManager = stopwatch()
 
-stopwatchManager = timeManager.stopwatch()
 
 exitCommand = Commands("Exit", "Exit", exit, "Exitting.", "", False)
 takeScreenshotCommand = Commands("Take a Screenshot", "Take", takeScreenshot, "Taking a screenshot", "", False)
 showLatestScreenshotCommand = Commands("Show latest screenshot", "Show", showLatestScreenshot, "Showing the latest screenshot", "There is no latest screenshot", False)
+getStopwatchCommand = Commands("Get Time", "Stopwatch Time", stopwatchManager.getCurrentTime, "The", "", False)
 timeCommand = Commands("Current time", "Time", getCurrentTime, f"The current time is {getCurrentTime().strftime("%I:%M %p")}", "", False)
-audioCommands = audioManager("Playing audio")
 recordingCommand = Commands("Record audio", "Record", recordAudio, "Recording has been finished.", "Please determine the length of the recording next time.", False)
 shutdownCommand = Commands("Shutdown Computer", "shut down", shutdownComputer, "Shutting down computer.", "", True)
 volumeCommand = Commands("Change Volume", "volume", changeVolume, "Volume has been changed.", "Please give a number to change the volume to next time.", False)
 startStopwatchCommand = Commands("Start Stopwatch", "start", stopwatchManager.startStopwatch, "Starting stopwatch", "", False)
+pauseStopwatchCommand = Commands("Pause Stopwatch", "pause stopwatch", stopwatchManager.pauseStopwatch, "Pausing the stopwatch", "The stopwatch is already paused.", False)
+resumeStopwatchCommand = Commands("Resume Stopwatch", "resume stopwatch", stopwatchManager.resumeStopwatch, "Resuming the stopwatch", "The stopwatch is not paused.", False)
+endStopwatchCOmmand = Commands("End Stopwatch", "end stopwatch", stopwatchManager.endStopwatch, "Ending the stopwatch", "A stopwatch is not running.", False)
+audioCommands = audioManager("Playing audio")
 
 TTS("Good day")
 
@@ -236,7 +278,6 @@ while True:
     except sr.UnknownValueError:
         print("Whoops. Some problems on my end")
 
-
     if audioCommands.player != None:
         if audioCommands.player.get_state() == vlc.State.Ended:
             if audioCommands.audioLooping == True:
@@ -248,6 +289,9 @@ while True:
                 audioCommands.player = None
                 audioCommands.latestAudioName = None
 
+    if stopwatchManager.isRunning == True:
+        stopwatchManager.manageStopwatch()
+
     if mainUser.userInput != "":
         for eachCommand in Commands.commandsList:
             commandExecution = eachCommand.executeCommand(mainUser.userInput)
@@ -255,68 +299,3 @@ while True:
             if commandExecution == True:
                 mainUser.userInput = ""
                 break
-
-
-
-
-
-# # TTS(f"Good day, {username}")
-
-# while False:
-
-
-#
-
-
-
-
-#     if "open" in userInput.lower():
-#             for key, value in sites.items():
-#                 if key in userInput.lower():
-#                     TTS(f"Opening {key}.")
-#                     webbrowser.open(value)
-
-#             # for i in range(len(appnames)):
-#             #     if appnames[i] in userInput.lower():
-#             #         latestAppName = appnames[i]
-#             #         TTS(f"Opening {appnames[i]}.")
-#             #         webbrowser.open(appcommands[i])
-    
-#     if "avengers protocol" in userInput.lower():
-#         if HasAccess == True:
-#             if p != None:
-#                 p.stop()
-#             TTS("ASSEMBLE.")
-#             latestSongName = "Avengers Protocol"
-#             p = vlc.MediaPlayer("Sounds/ASSEMBLE.mp3")
-#             p.play()
-#         else:
-#             TTS(f"Access denied, {username}")
-    
-#     if "clean up protocol" in userInput.lower():
-#         if HasAccess == True:
-#             TTS(f"Initiating the clean-up protocol, {username}.")
-#             call("killall brave", shell=True)
-#             webbrowser.open(sites["ecosia"])
-#             webbrowser.open(sites["youtube"])
-#             webbrowser.open(sites["reddit"])
-#             webbrowser.open(sites["aether"])
-#         else:
-#             TTS(f"Access denied, {username}")
-    
-
-    
-
-    
-
-    
-
-
-
-    
-
-
-            
-#     if "thank" in userInput.lower():
-#         TTS(f"At your service, {username}.")
-    
