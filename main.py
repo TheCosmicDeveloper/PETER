@@ -20,6 +20,7 @@ import pyaudio
 import sounddevice as sd
 from scipy.io.wavfile import write
 from functools import partial
+import timeManager 
 
 sites = {"ecosia": "https://ecosia.org/", "google": "https://google.com/", "youtube": "https://youtube.com/"}
 
@@ -121,15 +122,18 @@ class Commands:
                 if self.commandFalseSpeech == "":
                     TTS(self.commandTrueSpeech)
                     self.commandFunction()
+                    return True
                     if mainUser.hasAccess == True:
                         mainUser.hasAccess = False
                 else:
                     commandFunc = self.commandFunction()
                     if commandFunc == True:
                         TTS(self.commandTrueSpeech)
+                        return True
                     elif commandFunc == False:
                         TTS(self.commandFalseSpeech)
-                return True
+                        return True
+                
             else:
                 TTS("Are you sure you want to execute this command? If you are, run it again.")
                 mainUser.hasAccess = True
@@ -204,6 +208,7 @@ class audioManager(Commands):
                     return True
 
 
+stopwatchManager = timeManager.stopwatch()
 
 exitCommand = Commands("Exit", "Exit", exit, "Exitting.", "", False)
 takeScreenshotCommand = Commands("Take a Screenshot", "Take", takeScreenshot, "Taking a screenshot", "", False)
@@ -213,6 +218,7 @@ audioCommands = audioManager("Playing audio")
 recordingCommand = Commands("Record audio", "Record", recordAudio, "Recording has been finished.", "Please determine the length of the recording next time.", False)
 shutdownCommand = Commands("Shutdown Computer", "shut down", shutdownComputer, "Shutting down computer.", "", True)
 volumeCommand = Commands("Change Volume", "volume", changeVolume, "Volume has been changed.", "Please give a number to change the volume to next time.", False)
+startStopwatchCommand = Commands("Start Stopwatch", "start", stopwatchManager.startStopwatch, "Starting stopwatch", "", False)
 
 TTS("Good day")
 
@@ -309,19 +315,7 @@ while True:
 
     
 
-#     # if "timer" in userInput.lower():
-#     #     if timerRunning == False:
-#     #         timerRunning = True
-#     #         startTime = 0
-#     #     else:
-#     #         TTS(f"A timer is already running, {username}.")
 
-#     # if timerRunning == True:
-#     #     currentTime = time.time()
-    
-#     # if startTime - currentTime >= maxTime:   
-#     #     print("yay mario")
-#     # NOTE: WORK IN PROGRESS. SEE: TESTSCRIPT.PY
             
 #     if "thank" in userInput.lower():
 #         TTS(f"At your service, {username}.")
