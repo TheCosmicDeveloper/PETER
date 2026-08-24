@@ -21,21 +21,23 @@ from accounts import accountSearch
 import pyaudio
 import sounddevice as sd
 from scipy.io.wavfile import write
-from functools import partial
+import pickle
+
 
 engine = pyttsx3.init()
 r = sr.Recognizer()
 
 class User:
-    def __init__(self, hasAccess=False, username="Guest", screenshotLocation="/home/mint/Pictures/", recordingLocation="/home/mint/Recordings", audioLocation="home/mint/Music"):
+    def __init__(self, hasAccess=False, username="Guest", screenshotLocation="/home/mint/Pictures/", recordingLocation="/home/mint/Recordings", audioLocation="/home/mint/Music"):
         self.username = username
         self.hasAccess = hasAccess
         self.latestScreenshot = None
         self.screenshotLocation = screenshotLocation
-        self.timezone = input("What is your timezone?")
+        self.timezone = None
         self.userInput = ""
         self.recordingLocation = recordingLocation
         self.audioLocation = audioLocation
+        self.isFirstTime = True
     
     def changeAccess(self, bool):
         self.hasAccess = bool
@@ -49,6 +51,30 @@ def TTS(Text):
     engine.say(Text)
     engine.setProperty('rate', 125) 
     engine.runAndWait() 
+
+if os.path.getsize("Data/userData.pkl") > 0:
+    with open("Data/userData.pkl", "rb") as userDataFile:
+        mainUser = pickle.load(open("Data/userData.pkl", "rb"))
+
+if mainUser.isFirstTime == True:
+    TTS("As this is your first time, a configuration will be run.")
+    print("As this is your first time, a configuration will be run.")
+    TTS("Where do you want to save screenshots")
+    mainUser.screenshotLocation = input("Where do you want to save screenshots? \n")
+    TTS("Where do you want to save recordings?")
+    mainUser.recordingLocation = input("Where do you want to save recordings? \n")
+    TTS("Where do you want audio files to be run from?")
+    mainUser.recordingLocation = input("Where do you want audio files to be run from? \n")
+    TTS("What is your timezone?")
+    mainUser.timezone = input("What is your timezone?")
+    mainUser.isFirstTime = False
+    with open("Data/userData.pkl", "ab") as userDataFile:
+        pickle.dump(mainUser, userDataFile)
+    TTS("Configuration has been finished. Launching the program.")
+    print("Configuration has been finished. Launching the program.")
+else:
+    TTS("Good day")
+
 
 def hasNumbers(inputString):
     return any(char.isdigit() for char in inputString)
@@ -133,7 +159,7 @@ class Commands:
                 mainUser.hasAccess = True
 
 class audioManager(Commands):
-    audioDict = {}
+    audiolist = os.listdir(mainUser.audioLocation)
     commandsDict = None
 
     def __init__(self, commandSpeech):
@@ -144,13 +170,14 @@ class audioManager(Commands):
         self.commandsDict = {"play": self.playAudioCommand, "stop": self.stopAudio, "repeat": self.repeatAudio, "pause": self.pauseAudio, "resume": self.resumeAudio}
     
     def playAudioCommand(self, string):
-        for key, value in self.audioDict.items():
-            if key.lower() in string.lower():
+        for audioFile in self.audiolist:
+            audioFileName = audioFile.replace(".mp3", "")
+            if audioFileName.lower() in string.lower():
                 if self.player != None:
                     self.player.stop()
                     self.player = None
-                self.latestAudioName = key
-                self.player = vlc.MediaPlayer(f"{mainUser.audioLocation}/{value}")
+                self.latestAudioName = audioFileName
+                self.player = vlc.MediaPlayer(f"{mainUser.audioLocation}/{audioFile}")
                 self.player.play()
                 return f"Playing {self.latestAudioName}"
         
@@ -261,8 +288,6 @@ pauseStopwatchCommand = Commands("Pause Stopwatch", "pause stopwatch", stopwatch
 resumeStopwatchCommand = Commands("Resume Stopwatch", "resume stopwatch", stopwatchManager.resumeStopwatch, "Resuming the stopwatch", "The stopwatch is not paused.", False)
 endStopwatchCOmmand = Commands("End Stopwatch", "end stopwatch", stopwatchManager.endStopwatch, "Ending the stopwatch", "A stopwatch is not running.", False)
 audioCommands = audioManager("Playing audio")
-
-TTS("Good day")
 
 while True:
     with sr.Microphone() as source:
