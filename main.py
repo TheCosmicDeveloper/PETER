@@ -1,6 +1,6 @@
 # P.E.T.E.R v0 ALPHA
 
-print("RUNNING PETER")
+print("Starting PETER.")
 
 import pandas as pd
 import requests_cache
@@ -13,7 +13,6 @@ import datetime
 from zoneinfo import ZoneInfo
 from PIL import Image, ImageGrab
 import speech_recognition as sr
-import pyttsx3
 import vlc
 import random
 import time
@@ -22,9 +21,10 @@ import pyaudio
 import sounddevice as sd
 from scipy.io.wavfile import write
 import pickle
+import sys
+import ttshandler
+import timemodule
 
-
-engine = pyttsx3.init()
 r = sr.Recognizer()
 
 class User:
@@ -47,33 +47,28 @@ class User:
 
 mainUser = User()
 
-def TTS(Text):
-    engine.say(Text)
-    engine.setProperty('rate', 125) 
-    engine.runAndWait() 
-
 if os.path.getsize("Data/userData.pkl") > 0:
     with open("Data/userData.pkl", "rb") as userDataFile:
         mainUser = pickle.load(open("Data/userData.pkl", "rb"))
 
 if mainUser.isFirstTime == True:
-    TTS("As this is your first time, a configuration will be run.")
+    ttshandler.TTS("As this is your first time, a configuration will be run.")
     print("As this is your first time, a configuration will be run.")
-    TTS("Where do you want to save screenshots")
+    ttshandler.TTS("Where do you want to save screenshots")
     mainUser.screenshotLocation = input("Where do you want to save screenshots? \n")
-    TTS("Where do you want to save recordings?")
+    ttshandler.TTS("Where do you want to save recordings?")
     mainUser.recordingLocation = input("Where do you want to save recordings? \n")
-    TTS("Where do you want audio files to be run from?")
+    ttshandler.TTS("Where do you want audio files to be run from?")
     mainUser.recordingLocation = input("Where do you want audio files to be run from? \n")
-    TTS("What is your timezone?")
+    ttshandler.TTS("What is your timezone?")
     mainUser.timezone = input("What is your timezone?")
     mainUser.isFirstTime = False
     with open("Data/userData.pkl", "ab") as userDataFile:
         pickle.dump(mainUser, userDataFile)
-    TTS("Configuration has been finished. Launching the program.")
+    ttshandler.TTS("Configuration has been finished. Launching the program.")
     print("Configuration has been finished. Launching the program.")
 else:
-    TTS("Good day")
+    ttshandler.TTS("Good day")
 
 
 def hasNumbers(inputString):
@@ -85,7 +80,7 @@ def recordAudio():
             fs = 44100  
             seconds = int(recordTime[0])
             recording = sd.rec(int(seconds * fs), samplerate=fs, channels=2)
-            TTS(f"Recording audio for {recordTime[0]}")
+            ttshandler.TTS(f"Recording audio for {recordTime[0]}")
             sd.wait()  # Wait until recording is finished
             userInput = ""
             write(f'{mainUser.recordingLocation}/Recording {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}.wav', fs, recording)
@@ -107,21 +102,15 @@ def showLatestScreenshot():
 def getCurrentTime():
     return datetime.datetime.now(ZoneInfo(mainUser.timezone))
 
-def FtC(Number):
-    return Number * 9 / 5 + 32
-
 def shutdownComputer():
     call('systemctl poweroff -i', shell=True)
 
 def changeVolume():
-    print("change volume")
     if hasNumbers(mainUser.userInput):
-        print("has numbers")
         changeNumber = re.findall(r'\d+', mainUser.userInput)
         call(f'pactl -- set-sink-volume 0 {changeNumber[0]}% ', shell=True)
         return True
     else:
-        print("has no numbers")
         return False
 
 class Commands:
@@ -140,7 +129,8 @@ class Commands:
         if self.commandExecution.lower() in string.lower():
             if (self.requiresAccess == True and mainUser.hasAccess == True) or self.requiresAccess == False:
                 if self.commandFalseSpeech == "":
-                    TTS(self.commandTrueSpeech)
+                    print(self.commandTrueSpeech)
+                    ttshandler.TTS(self.commandTrueSpeech)
                     self.commandFunction()
                     return True
                     if mainUser.hasAccess == True:
@@ -148,15 +138,19 @@ class Commands:
                 else:
                     commandFunc = self.commandFunction()
                     if commandFunc == True:
-                        TTS(self.commandTrueSpeech)
+                        print(self.commandTrueSpeech)
+                        ttshandler.TTS(self.commandTrueSpeech)
                         return True
                     elif commandFunc == False:
-                        TTS(self.commandFalseSpeech)
+                        print(self.commandFalseSpeech)
+                        ttshandler.TTS(self.commandFalseSpeech)
                         return True
                 
             else:
-                TTS("Are you sure you want to execute this command? If you are, run it again.")
+                ttshandler.TTS("Are you sure you want to execute this command? If you are, run it again.")
                 mainUser.hasAccess = True
+
+
 
 class audioManager(Commands):
     audiolist = os.listdir(mainUser.audioLocation)
@@ -227,55 +221,13 @@ class audioManager(Commands):
             for i in splitString:
                 if key.lower() == i.lower():
                     commandExecution = value(string)
-                    TTS(commandExecution)
+                    ttshandler.TTS(commandExecution)
                     return True
-class stopwatch():
-    def __init__(self):
-        self.startTime = 0
-        self.currentTime = 0
-        self.endTime = 0
-        self.isRunning = False
-        self.isPaused = False
-    
-    def startStopwatch(self):
-        self.startTime = time.time()
-        self.isRunning = True
-    
-    def endStopwatch(self):
-        if self.isRunning == True:
-            self.isRunning = False
-            self.endTime = self.currentTime
-            self.currentTime = 0
-            return True
-        else:
-            return False
-    
-    def pauseStopwatch(self):
-        if self.isPaused == False:    
-            self.isRunning = False
-            self.isPaused = True
-            return True
-        else:
-            return False
-    
-    def resumeStopwatch(self):
-        if self.isPaused == True:
-            self.isRunning = True
-            self.isPaused = False
-            return True
-        else:
-            return False
-    
-    def getCurrentTime(self):
-        TTS(f"current stopwatch time is {round(self.currentTime)}")
-        # PSST: Reminder to turn this into something like: 30.28 seconds.
-    def manageStopwatch(self):
-        self.currentTime = time.time() - self.startTime
 
-stopwatchManager = stopwatch()
+stopwatchManager = timemodule.stopwatch()
 
 
-exitCommand = Commands("Exit", "Exit", exit, "Exitting.", "", False)
+exitCommand = Commands("Exit", "Exit", sys.exit, "Exitting.", "", False)
 takeScreenshotCommand = Commands("Take a Screenshot", "Take", takeScreenshot, "Taking a screenshot", "", False)
 showLatestScreenshotCommand = Commands("Show latest screenshot", "Show", showLatestScreenshot, "Showing the latest screenshot", "There is no latest screenshot", False)
 getStopwatchCommand = Commands("Get Time", "Stopwatch Time", stopwatchManager.getCurrentTime, "The", "", False)
@@ -291,17 +243,11 @@ audioCommands = audioManager("Playing audio")
 
 while True:
     with sr.Microphone() as source:
-        print("Talk")
         audio_text = r.listen(source)
-        # recoginze_() method will throw a request
-        # error if the API is unreachable,
-        # hence using exception handling
-
     try:
         mainUser.userInput = r.recognize_google(audio_text, language="en-US")
-        print("Time over, thanks")
     except sr.UnknownValueError:
-        print("Whoops. Some problems on my end")
+        print("Whoops. Some problems on my end.")
 
     if audioCommands.player != None:
         if audioCommands.player.get_state() == vlc.State.Ended:
@@ -309,18 +255,18 @@ while True:
                 playAudioFunction = audioCommands.playAudioCommand(audioCommands.latestAudioName)
                 print(playAudioFunction)
                 print(audioCommands.latestAudioName)
-                TTS(playAudioFunction)
+                ttshandler.TTS(playAudioFunction)
             else:
                 audioCommands.player = None
                 audioCommands.latestAudioName = None
 
     if stopwatchManager.isRunning == True:
         stopwatchManager.manageStopwatch()
+        stopwatchManager.getCurrentTime()
 
     if mainUser.userInput != "":
         for eachCommand in Commands.commandsList:
             commandExecution = eachCommand.executeCommand(mainUser.userInput)
-            print(mainUser.userInput)
             if commandExecution == True:
                 mainUser.userInput = ""
                 break
